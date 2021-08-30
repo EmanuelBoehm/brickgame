@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{input::mouse::MouseButtonInput, prelude::*};
 mod entity;
 use entity::*;
 mod components;
@@ -14,28 +14,44 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .insert_resource(Scoreboard { score: 0 })
         .insert_resource(ClearColor(Color::rgb(0.9, 0.9, 0.9)))
+        .add_state(GameState::Aiming)
         .add_startup_system(startup_system.system())
-        .add_system(system::ball_movement_system.system())
-        .add_system(system::ball_collision_system.system())
+        .add_system_set(SystemSet::on_enter(GameState::Aiming).with_system(block_setup.system()))
+        .add_system_set(
+            SystemSet::on_update(GameState::Aiming)
+                .with_system(system::mouse_listener_system.system())
+        )
+        .add_system_set(SystemSet::on_enter(GameState::Shooting).with_system(ball_setup.system()))
+        .add_system_set(
+            SystemSet::on_update(GameState::Shooting)
+                .with_system(system::ball_movement_system.system())
+                .with_system(system::ball_collision_system.system())
+        )
         .run();
 }
+#[derive(Clone, Eq, PartialEq, Debug, Hash)]
+enum GameState {
+    Shooting,
+    Aiming,
+}
+fn block_setup(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
+    construct_blocks(&mut commands, &mut materials, (1, 1), 1);
+    construct_blocks(&mut commands, &mut materials, (2, 2), 1);
+    construct_blocks(&mut commands, &mut materials, (1, 3), 1);
+    construct_blocks(&mut commands, &mut materials, (10, 3), 1);
+}
 
-fn startup_system(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
-    // spawn camera
-    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
-    commands.spawn_bundle(UiCameraBundle::default());
-
-    //spawn ball
+fn ball_setup(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
     commands
-        .spawn_bundle(SpriteBundle {
-            material: materials.add(Color::rgb(0.5, 0.5, 1.0).into()),
-            transform: Transform::from_xyz(0.0, 215.0, 1.0),
-            sprite: Sprite::new(Vec2::new(10.0, 10.0)),
-            ..Default::default()
-        })
-        .insert(Ball)
-        .insert(Speed(100.))
-        .insert(Direction(0., 1.));
+    .spawn_bundle(SpriteBundle {
+        material: materials.add(Color::rgb(0.5, 0.5, 1.0).into()),
+        transform: Transform::from_xyz(0.0, 215.0, 1.0),
+        sprite: Sprite::new(Vec2::new(10.0, 10.0)),
+        ..Default::default()
+    })
+    .insert(Ball)
+    .insert(Speed(100.))
+    .insert(Direction(0., 1.));
 
     commands
         .spawn_bundle(SpriteBundle {
@@ -47,6 +63,14 @@ fn startup_system(mut commands: Commands, mut materials: ResMut<Assets<ColorMate
         .insert(Ball)
         .insert(Speed(100.))
         .insert(Direction(0.7, 3.));
+}
+
+fn startup_system(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
+    // spawn camera
+    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
+    commands.spawn_bundle(UiCameraBundle::default());
+
+    
 
     //spawn outer walls
     commands
@@ -76,10 +100,6 @@ fn startup_system(mut commands: Commands, mut materials: ResMut<Assets<ColorMate
         })
         .insert(Collider::Wall);
 
-    construct_blocks(&mut commands, &mut materials, (1, 1), 1);
-    construct_blocks(&mut commands, &mut materials, (2, 2), 1);
-    construct_blocks(&mut commands, &mut materials, (1, 3), 1);
-    construct_blocks(&mut commands, &mut materials, (10, 3), 1);
 }
 pub struct Scoreboard {
     score: usize,

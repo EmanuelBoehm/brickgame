@@ -75,3 +75,13 @@ pub fn ball_collision_system(
         }
     }
 }
+pub fn mouse_listener_system(
+    mut commands: Commands,
+    mut scoreboard: ResMut<Scoreboard>,
+    mouse_click: Res<Input<MouseButton>>,
+    mut ball_query: Query<(&mut Ball, &Transform, &Sprite, &mut Direction)>,
+    mut collider_query: Query<(Entity, &mut Collider, &Transform, &Sprite)>,
+) {
+    todo!();
+    //mouse_click.
+}
