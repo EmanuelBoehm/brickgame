@@ -1,10 +1,10 @@
 use bevy::prelude::*;
 use bevy::core::FixedTimestep;
 mod entity;
-use bevy_asset_ron::RonAssetPlugin;
 use entity::*;
 mod components;
 use components::*;
+use rand::Rng;
 mod system;
 
 const WIDTH: f32 = 800.;
@@ -47,17 +47,6 @@ fn main() {
         )
         .run();
  }
-// #[derive(serde::Deserialize)]
-// #[derive(TypeUuid)]
-// #[uuid = "1df82c01-9c71-4fa8-adc4-78c5822268f8"]
-// struct Map {
-//     blocks: Vec<Block>,
-// }
-// #[derive(serde::Deserialize)]
-// struct Block {
-//     health: u32,
-//     position: Vec2,
-// }
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
 pub enum GameState {
@@ -66,10 +55,16 @@ pub enum GameState {
 }
 
 fn block_setup(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
-    construct_block(&mut commands, &mut materials, (1, 1), 1);
-    construct_block(&mut commands, &mut materials, (2, 2), 1);
-    construct_block(&mut commands, &mut materials, (1, 3), 1);
-    construct_block(&mut commands, &mut materials, (10, 3), 1);
+    let mut rng = rand::thread_rng();
+    let max = 200;
+    let blocks_per_line = 20;
+
+    let vals: Vec<bool> = (0..max).map(|_| rng.gen::<bool>()).collect();
+    for x in 0..max {
+        if vals[x] {
+            construct_block(&mut commands, &mut materials, (x as i32 % blocks_per_line, x as i32 / blocks_per_line), 2);
+        }
+    }
 }
 
 #[derive(Debug,Clone)]
@@ -108,7 +103,8 @@ fn startup_system(mut commands: Commands, mut materials: ResMut<Assets<ColorMate
     // spawn camera
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
     commands.spawn_bundle(UiCameraBundle::default());
-    rand::Rng
+
+
     //spawn outer walls
     commands
         .spawn_bundle(SpriteBundle {
