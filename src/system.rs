@@ -1,17 +1,10 @@
-use bevy::{
-    prelude::*,
-    sprite::collide_aabb::{collide, Collision},
-};
+use bevy::{prelude::*, sprite::collide_aabb::{collide, Collision}};
 
-use crate::{
-    components::{Direction, Speed},
-    entity::Ball,
-    Collider, Scoreboard,
-};
+use crate::{Collider, GameState, MousePos, Scoreboard, components::{MoveDirection, Speed}, entity::Ball};
 
 pub fn ball_movement_system(
     time: Res<Time>,
-    mut ball_query: Query<(&Ball, &mut Transform, &Speed, &Direction)>,
+    mut ball_query: Query<(&Ball, &mut Transform, &Speed, &MoveDirection)>,
 ) {
     // clamp the timestep to stop the ball from escaping when the game starts
     let delta_seconds = f32::min(0.2, time.delta_seconds());
@@ -24,7 +17,7 @@ pub fn ball_movement_system(
 pub fn ball_collision_system(
     mut commands: Commands,
     mut scoreboard: ResMut<Scoreboard>,
-    mut ball_query: Query<(&mut Ball, &Transform, &Sprite, &mut Direction)>,
+    mut ball_query: Query<(&mut Ball, &Transform, &Sprite, &mut MoveDirection)>,
     mut collider_query: Query<(Entity, &mut Collider, &Transform, &Sprite)>,
 ) {
     for (mut _ball, ball_transform, sprite, mut direction) in ball_query.iter_mut() {
@@ -76,12 +69,24 @@ pub fn ball_collision_system(
     }
 }
 pub fn mouse_listener_system(
-    mut commands: Commands,
-    mut scoreboard: ResMut<Scoreboard>,
-    mouse_click: Res<Input<MouseButton>>,
-    mut ball_query: Query<(&mut Ball, &Transform, &Sprite, &mut Direction)>,
-    mut collider_query: Query<(Entity, &mut Collider, &Transform, &Sprite)>,
+    btns: Res<Input<MouseButton>>,
+    windows: Res<Windows>,
+
+    mut mouse_pos: ResMut<MousePos>,
+    mut app_state: ResMut<State<GameState>>,
+
 ) {
-    todo!();
-    //mouse_click.
+    let window = windows.get_primary().unwrap();
+    
+    if btns.just_pressed(MouseButton::Right) {
+       
+        // For multi-window applications, you need to use a specific window ID here.
+        if let Some(position) = window.cursor_position() {
+            *mouse_pos = position;
+
+        }
+        app_state.set(GameState::Shooting);
+        println!("App state is about to be changed with {}", *mouse_pos);
+        
+    }
 }

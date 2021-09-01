@@ -1,0 +1,60 @@
+(
+  blocks: [ // this is an array
+        (
+            health: 1,
+            position: (1,1),
+        ),
+        (
+            health: 2,
+            position: (3,1),
+        ),
+        (
+            health: 3,
+            position: (4,),
+        ),
+        (
+            health: 2,
+            position: (5,1),
+        ),
+        (
+            health: 2,
+            position: (1,2),
+        ),
+        (
+            health: 2,
+            position: (3,2),
+        ),
+        (
+            health: 1,
+            position: (5,3),
+        ),
+        (
+            health: 1,
+            position: (7,2),
+        ),
+        (
+            health: 2,
+            position: (6,6),
+        ),
+        (
+            health: 1,
+            position: (6,5),
+        ),
+        (
+            health: 1,
+            position: (7,7),
+        ),
+        (
+            health: 1,
+            position: (6,1),
+        ),
+        (
+            health: 1,
+            position: (3,3),
+        ),
+        (
+            health: 1,
+            position: (3,3),
+        )
+        ],
+)
