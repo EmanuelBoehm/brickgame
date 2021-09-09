@@ -4,15 +4,18 @@ mod constants;
 mod entity;
 mod builder;
 mod resource;
+mod physic;
 use builder::{construct_ball, construct_block};
 use brickgame_mapgen::voronoi;
 use entity::*;
 mod components;
 use constants::CONFIG;
+use heron::PhysicsPlugin;
 use resource::{HasWon, MousePos, Shooter};
 use system::{ball_collision_system, ball_movement_system, button_system, check_balls_system, check_blocks_system, despawn_balls_system, despawn_blocks_system, despawn_button_system, mouse_listener_system, move_blocks_system};
-
 mod system;
+use heron::prelude::*;
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -25,7 +28,10 @@ fn main() {
                 height: CONFIG.window_height,
                 ..Default::default()
         })
+        .add_plugin(PhysicsPlugin::default()) // Add the plugin
+
         .add_plugins(DefaultPlugins)
+
         .insert_resource(HasWon::default())
         .insert_resource(Scoreboard { score: 0 })
         .insert_resource(ClearColor(Color::rgb(0.9, 0.9, 0.9)))
@@ -34,6 +40,7 @@ fn main() {
         
         // startup
         .add_startup_system(camera_init_system.system())
+        //.add_startup_system(physic_init_system.system())
         .add_state(GameState::Init)
         .add_system(mouse_listener_system.system())
         // Gamestate Init
@@ -133,7 +140,15 @@ fn camera_init_system(mut commands: Commands) {
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
     commands.spawn_bundle(UiCameraBundle::default());
 }
+// fn physic_init_system(
+//     mut configuration: ResMut<RapierConfiguration>,
 
+// ) {
+//     configuration.gravity = Vector::y() * 0.0;
+//     configuration.timestep_mode = TimestepMode::FixedTimestep;
+
+
+// }
 pub enum Collider {
     Block(u32),
     Wall,

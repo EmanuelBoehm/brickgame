@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy::render::render_graph::base::MainPass;
 use bevy::text::Text2dSize;
+use heron::{CollisionShape, RigidBody};
 use crate::{Collider, direction_ball_to_mouse};
 use crate::components::Movement;
 use crate::constants::CONFIG;
@@ -51,7 +52,12 @@ pub fn construct_block(
                 },
             });
         })
-        .insert(Collider::Block(health))
+        //.insert(Collider::Block(health))
+        //.with(Body::Sphere { radius: 10.0 })
+        //.with(Velocity::from(Vec2::unit_x() * 2.0))
+        .insert(RigidBody::Dynamic)
+        .insert(CollisionShape::Sphere { radius: CONFIG.block_size })
+
         .insert(Block);
         
 }
@@ -69,6 +75,9 @@ pub fn construct_ball(
             ..Default::default()
         })
         .insert(Ball)
+
+        .insert(RigidBody::Dynamic)
+        .insert(CollisionShape::Sphere { radius: CONFIG.ball_size })
         .insert(Movement::new(direction_ball_to_mouse(*mouse_pos), CONFIG.ballspeed));        
 }
 

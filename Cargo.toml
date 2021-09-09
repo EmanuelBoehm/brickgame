@@ -14,3 +14,4 @@ rand = "*"
 ron = "*"
 lazy_static = "1.4.0"
 brickgame_mapgen = { version = "*", path = "../brickgame_mapgen" }
+heron = { version = "0.11.1 ", features = ["2d"] }
