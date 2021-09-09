@@ -11,3 +11,6 @@ bevy = "0.5"
 serde = "*"
 bevy_asset_ron = "*"
 rand = "*"
+ron = "*"
+lazy_static = "1.4.0"
+brickgame_mapgen = { version = "*", path = "../brickgame_mapgen" }

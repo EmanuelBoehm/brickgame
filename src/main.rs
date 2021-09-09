@@ -1,91 +1,120 @@
-use bevy::prelude::*;
 use bevy::core::FixedTimestep;
+use bevy::prelude::*;
+mod constants;
 mod entity;
+mod builder;
+mod resource;
+use builder::{construct_ball, construct_block};
+use brickgame_mapgen::voronoi;
 use entity::*;
 mod components;
-use components::*;
-use rand::Rng;
+use constants::CONFIG;
+use resource::{HasWon, MousePos, Shooter};
+use system::{ball_collision_system, ball_movement_system, button_system, check_balls_system, check_blocks_system, despawn_balls_system, despawn_blocks_system, despawn_button_system, mouse_listener_system, move_blocks_system};
+
 mod system;
+#[macro_use]
+extern crate lazy_static;
 
-const WIDTH: f32 = 800.;
-const HEIGHT: f32 = 800.;
-const BLOCKSIZE: f32 = 40.;
-const _WALLSIZE: f32 = 10.;
-const BALLSPEED: f32 = 500.;
 
-pub type MousePos = Vec2;
 fn main() {
     App::build()
         .insert_resource(WindowDescriptor {
-        title: "Tetris".to_string(),width: WIDTH, height: HEIGHT,..Default::default()})    
+                title: "Brickgame".to_string(),
+                width: CONFIG.window_width,
+                height: CONFIG.window_height,
+                ..Default::default()
+        })
         .add_plugins(DefaultPlugins)
-        // .add_plugin(
-        //     // load `*.item` files
-        //     RonAssetPlugin::<Map>::new("item")
-        // )
+        .insert_resource(HasWon::default())
         .insert_resource(Scoreboard { score: 0 })
         .insert_resource(ClearColor(Color::rgb(0.9, 0.9, 0.9)))
         .insert_resource(Shooter::default())
         .insert_resource(MousePos::ZERO)
-        .add_state(GameState::Aiming)
-        .add_startup_system(startup_system.system())
+        
+        // startup
+        .add_startup_system(camera_init_system.system())
+        .add_state(GameState::Init)
+        .add_system(mouse_listener_system.system())
+        // Gamestate Init
         .add_system_set(
-            SystemSet::on_enter(GameState::Aiming)
-            .with_system(block_setup.system())
-        ).add_system_set(
-            SystemSet::on_update(GameState::Aiming)
-                .with_system(system::mouse_listener_system.system())
-        ).add_system_set(
-            SystemSet::on_update(GameState::Shooting)
-                .with_run_criteria(FixedTimestep::step(0.2))
+            SystemSet::on_enter(GameState::Init)
+                .with_system(despawn_blocks_system.system())
+                .with_system(button_setup_system.system())
+        )
+        .add_system_set(
+            SystemSet::on_update(GameState::Init)
+                .with_system(button_system.system())
+        )
+        .add_system_set(
+            SystemSet::on_exit(GameState::Init)
+                .with_system(despawn_button_system.system())
+                .with_system(block_setup.system())
+        )
+        // Gamestate Shooting
+        .add_system_set(
+            SystemSet::on_enter(GameState::Shooting)
                 .with_system(ball_setup.system())
         )
         .add_system_set(
             SystemSet::on_update(GameState::Shooting)
-                .with_system(system::ball_movement_system.system())
-                .with_system(system::ball_collision_system.system())
+                .with_run_criteria(FixedTimestep::step(0.1))
+                .with_system(ball_setup.system()),
+        )
+        .add_system_set(
+            SystemSet::on_update(GameState::Shooting)
+                .with_system(check_balls_system.system())
+                .with_system(check_blocks_system.system())
+                .with_system(ball_movement_system.system().label("movement").before("collision"))
+                .with_system(ball_collision_system.system().label("collision").after("movement")),
+        )
+        .add_system_set(
+            SystemSet::on_exit(GameState::Shooting)
+                .with_system(despawn_balls_system.system())
+        )
+        // Gamestate MovingBlocks
+        .add_system_set(
+            SystemSet::on_enter(GameState::MovingBlocks)
+            .with_system(move_blocks_system.system()),
         )
         .run();
- }
+}
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
 pub enum GameState {
+    Init,
     Shooting,
     Aiming,
+    MovingBlocks,
 }
 
-fn block_setup(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
-    let mut rng = rand::thread_rng();
-    let max = 200;
-    let blocks_per_line = 20;
-
-    let vals: Vec<bool> = (0..max).map(|_| rng.gen::<bool>()).collect();
-    for x in 0..max {
-        if vals[x] {
-            construct_block(&mut commands, &mut materials, (x as i32 % blocks_per_line, x as i32 / blocks_per_line), 2);
-        }
+fn block_setup(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    asset_server: Res<AssetServer>,
+) {
+    let map = voronoi::voronoi_map_gen(
+        (CONFIG.window_width as usize / CONFIG.block_size as usize, 
+            CONFIG.window_height as usize / CONFIG.block_size as usize)
+        );
+    for brick in &map.bricks {
+        construct_block(
+            &mut commands,
+            &mut materials,
+            &asset_server,
+            brick.position,
+            brick.health,
+        );
     }
-}
 
-#[derive(Debug,Clone)]
-struct Shooter{
-    pub count: u32,
-    pub shooted: u32,
-    pub finished: bool,
-}
-impl Default for Shooter {
-    fn default() -> Self {
-        Shooter { count: 10, shooted: 0, finished: false }
-    }
 }
 
 fn ball_setup(
-    mut commands: Commands, 
+    mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut shooter_count: ResMut<Shooter>,
     mouse_pos: Res<MousePos>,
     game_state: Res<State<GameState>>,
-
 ) {
     if *game_state.current() == GameState::Shooting {
         if !shooter_count.finished {
@@ -99,91 +128,130 @@ fn ball_setup(
     }
 }
 
-fn startup_system(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
+fn camera_init_system(mut commands: Commands) {
     // spawn camera
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
     commands.spawn_bundle(UiCameraBundle::default());
-
-
-    //spawn outer walls
-    commands
-        .spawn_bundle(SpriteBundle {
-            material: materials.add(Color::rgb(0.1, 0.5, 1.0).into()),
-            transform: Transform::from_xyz(0.0, HEIGHT / 2., 1.0),
-            sprite: Sprite::new(Vec2::new(WIDTH + 10., 10.0)),
-            ..Default::default()
-        })
-        .insert(Collider::Wall);
-
-    commands
-        .spawn_bundle(SpriteBundle {
-            material: materials.add(Color::rgb(0.1, 0.5, 1.0).into()),
-            transform: Transform::from_xyz(WIDTH / 2., 0.0, 1.0),
-            sprite: Sprite::new(Vec2::new(10.0, HEIGHT)),
-            ..Default::default()
-        })
-        .insert(Collider::Wall);
-
-    commands
-        .spawn_bundle(SpriteBundle {
-            material: materials.add(Color::rgb(0.1, 0.5, 1.0).into()),
-            transform: Transform::from_xyz(-WIDTH / 2., 0.0, 1.0),
-            sprite: Sprite::new(Vec2::new(10.0, HEIGHT)),
-            ..Default::default()
-        })
-        .insert(Collider::Wall);
 }
-pub struct Scoreboard {
-    score: usize,
-}
+
 pub enum Collider {
     Block(u32),
     Wall,
 }
 
-type FieldPos = (i32, i32);
-
-fn construct_block(
-    commands: &mut Commands,
-    materials: &mut ResMut<Assets<ColorMaterial>>,
-    field_pos: FieldPos,
-    health: u32,
-) {
-    commands
-        .spawn_bundle(SpriteBundle {
-            material: materials.add(Color::rgb(0.8, 0.1, 1.0).into()),
-            transform: field_pos_to_transform(field_pos),
-            sprite: Sprite::new(Vec2::new(BLOCKSIZE, BLOCKSIZE)),
-            ..Default::default()
-        })
-        .insert(Collider::Block(health));
-}
-
-fn field_pos_to_transform(field_pos: FieldPos) -> Transform {
-    let x = field_pos.0 as f32 * BLOCKSIZE - WIDTH / 2. + BLOCKSIZE / 2.;
-    let y = HEIGHT / 2. - field_pos.1 as f32 * BLOCKSIZE - BLOCKSIZE / 2.;
-    Transform::from_xyz(x, y, 1.)
-}
-
-fn construct_ball(
-    commands: &mut Commands,
-    materials: &mut ResMut<Assets<ColorMaterial>>,
-    mouse_pos: Res<MousePos>,
-) {
-    commands
-    .spawn_bundle(SpriteBundle {
-        material: materials.add(Color::rgb(0.5, 0.5, 1.0).into()),
-        transform: Transform::from_xyz(0.0, -HEIGHT / 2., 1.0),
-        sprite: Sprite::new(Vec2::new(10.0, 10.0)),
-        ..Default::default()
-    })
-    .insert(Ball)
-    .insert(Speed(BALLSPEED))
-    .insert(direction_ball_to_mouse(*mouse_pos));
-}
-
-fn direction_ball_to_mouse(mouse_pos: Vec2) -> MoveDirection {
+fn direction_ball_to_mouse(mouse_pos: Vec2) -> Vec2 {
     let mut position = mouse_pos.clone();
-    position.x -= WIDTH / 2.;
-    MoveDirection(position.normalize().x, position.normalize().y)
+    position.x -= CONFIG.window_width / 2.;
+    Vec2::new(position.x, position.y)
+}
+
+fn button_setup_system(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    asset_server: Res<AssetServer>,
+    has_won: Res<HasWon>,
+){
+    let size = Size::new(Val::Px(CONFIG.window_width / 2.), Val::Px(CONFIG.window_height / 16.));
+    match *has_won {
+        None => {
+            let message = "Init new Game with space or click!";
+                println!("{}", message);
+                commands
+                .spawn_bundle(ButtonBundle {
+                    style: Style {
+                        size,
+                        // center button
+                        margin: Rect::all(Val::Auto),
+                        // horizontally center child text
+                        justify_content: JustifyContent::Center,
+                        // vertically center child text
+                        align_items: AlignItems::Center,
+                        ..Default::default()
+                    },
+                    material: materials.add(Color::rgb(0.1, 0.5, 0.3).into()),
+                    ..Default::default()
+                })
+                .with_children(|parent| {
+                    parent.spawn_bundle(TextBundle {
+                        text: Text::with_section(
+                            message,
+                            TextStyle {
+                                font: asset_server.load("fonts/Uroob-Regular.ttf"),
+                                font_size: 40.0,
+                                color: Color::rgb(0.9, 0.9, 0.9),
+                            },
+                            Default::default(),
+                        ),
+                        ..Default::default()
+                    });
+                });
+        },
+        Some(won) => {
+            if won {
+                let message = "you won. Init new Game with space or click!";
+                println!("{}", message);
+                commands
+                .spawn_bundle(ButtonBundle {
+                    style: Style {
+                        size,
+                        // center button
+                        margin: Rect::all(Val::Auto),
+                        // horizontally center child text
+                        justify_content: JustifyContent::Center,
+                        // vertically center child text
+                        align_items: AlignItems::Center,
+                        ..Default::default()
+                    },
+                    material: materials.add(Color::rgb(0.1, 0.5, 0.3).into()),
+                    ..Default::default()
+                })
+                .with_children(|parent| {
+                    parent.spawn_bundle(TextBundle {
+                        text: Text::with_section(
+                            message,
+                            TextStyle {
+                                font: asset_server.load("fonts/Uroob-Regular.ttf"),
+                                font_size: 40.0,
+                                color: Color::rgb(0.9, 0.9, 0.9),
+                            },
+                            Default::default(),
+                        ),
+                        ..Default::default()
+                    });
+                });
+            } else {
+                let message = "you lost. Init new Game with space or click!";
+                println!("{}", message);
+                commands
+                .spawn_bundle(ButtonBundle {
+                    style: Style {
+                        size,
+                        // center button
+                        margin: Rect::all(Val::Auto),
+                        // horizontally center child text
+                        justify_content: JustifyContent::Center,
+                        // vertically center child text
+                        align_items: AlignItems::Center,
+                        ..Default::default()
+                    },
+                    material: materials.add(Color::rgb(0.1, 0.5, 0.3).into()),
+                    ..Default::default()
+                })
+                .with_children(|parent| {
+                    parent.spawn_bundle(TextBundle {
+                        text: Text::with_section(
+                            message,
+                            TextStyle {
+                                font: asset_server.load("fonts/Uroob-Regular.ttf"),
+                                font_size: 40.0,
+                                color: Color::rgb(0.9, 0.9, 0.9),
+                            },
+                            Default::default(),
+                        ),
+                        ..Default::default()
+                    });
+                });
+            }
+        },
+    }
 }
