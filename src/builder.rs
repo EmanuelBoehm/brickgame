@@ -1,9 +1,10 @@
+
 use bevy::prelude::*;
 use bevy::render::render_graph::base::MainPass;
 use bevy::text::Text2dSize;
-use heron::{CollisionShape, RigidBody};
+use heron::{CollisionLayers, CollisionShape, PhysicMaterial, RigidBody, Velocity};
 use crate::{Collider, direction_ball_to_mouse};
-use crate::components::Movement;
+use crate::components::{CollisionLayer};
 use crate::constants::CONFIG;
 use crate::entity::{Ball, Block};
 use crate::resource::MousePos;
@@ -52,12 +53,21 @@ pub fn construct_block(
                 },
             });
         })
-        //.insert(Collider::Block(health))
-        //.with(Body::Sphere { radius: 10.0 })
-        //.with(Velocity::from(Vec2::unit_x() * 2.0))
-        .insert(RigidBody::Dynamic)
-        .insert(CollisionShape::Sphere { radius: CONFIG.block_size })
-
+        .insert(Collider::Block(health))
+        .insert(RigidBody::Static)
+        .insert(CollisionShape::Cuboid {
+            half_extends: Vec3::new(CONFIG.block_size / 2., CONFIG.block_size / 2.,0.),
+            border_radius: None,
+        })  
+        .insert(PhysicMaterial {
+            restitution: 1.,
+            ..Default::default()
+        })
+        .insert(
+            CollisionLayers::none()
+                .with_group(CollisionLayer::Block)
+                .with_mask(CollisionLayer::Ball),
+        )
         .insert(Block);
         
 }
@@ -75,10 +85,18 @@ pub fn construct_ball(
             ..Default::default()
         })
         .insert(Ball)
-
         .insert(RigidBody::Dynamic)
         .insert(CollisionShape::Sphere { radius: CONFIG.ball_size })
-        .insert(Movement::new(direction_ball_to_mouse(*mouse_pos), CONFIG.ballspeed));        
+        .insert(PhysicMaterial {
+            restitution: 1.,
+            ..Default::default()
+        })
+        .insert(
+            CollisionLayers::none()
+                .with_group(CollisionLayer::Ball)
+                .with_mask(CollisionLayer::Block),
+        )
+        .insert(Velocity::from(direction_ball_to_mouse(*mouse_pos) * CONFIG.ballspeed));
 }
 
 fn field_pos_to_transform(field_pos: FieldPos) -> (f32, f32) {

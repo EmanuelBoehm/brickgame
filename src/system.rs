@@ -1,113 +1,103 @@
 
-use bevy::{
-    prelude::*,
-    sprite::collide_aabb::{collide, Collision},
-};
+use bevy::prelude::*;
+use heron::{CollisionEvent, Velocity};
 
-use crate::{Collider, GameState, MousePos, Scoreboard, Shooter, components::Movement, constants::CONFIG, entity::{Ball, Block}, resource::HasWon};
+use crate::{Collider, GameState, MousePos, Shooter, components::CollisionLayer, constants::CONFIG, entity::{Ball, Block}, resource::HasWon};
 
-pub fn ball_movement_system(
-    mut ball_query: Query<(&mut Transform, &Movement), With<Ball>>,
+pub fn collision_events(
+    mut events: EventReader<CollisionEvent>,
+    mut block_query: Query<(Entity, &mut Collider), With<Block>>,
 ) {
-    for (mut transform, movement) in ball_query.iter_mut() {
-        transform.translation += 
-            Vec3::new(movement.x(), movement.y(),0.) * CONFIG.ballspeed;
-    }
+    events
+    .iter()
+    // We care about when the entities "start" to collide
+    .filter(|e| e.is_started())
+    .filter_map(|event| {
+        let (entity_1, entity_2) = event.rigid_body_entities();
+        
+        let (layers_1, layers_2) = event.collision_layers();
+
+        if layers_1.contains_group(CollisionLayer::Block) {
+            Some(entity_1) 
+        } else if layers_2.contains_group(CollisionLayer::Block) {
+            Some(entity_2)
+        } else {
+            // This event is not the collision between an enemy and the player. We can ignore it.
+            None
+        }
+    })
+    .for_each(|block_entity| {
+        let mut collider = block_query.get_mut(block_entity).unwrap().1;
+        if let Collider::Block(health) = *collider {
+            if health > 0 {
+                *collider = Collider::Block(health - 1);
+            }
+        }
+    });
 }
 
-pub fn ball_collision_system(
+pub fn update_block_text(
     mut commands: Commands,
-    mut scoreboard: ResMut<Scoreboard>,
-    mut ball_query: Query<(Entity, &Transform, &Sprite, &mut Movement), With<Ball>>,
-    mut collider_query: Query<(
-        Entity,
-        &mut Collider,
-        &Transform,
-        &Sprite,
-        Option<&Children>,
-    )>,
+    mut block_query: Query<(Entity, &Children, &Collider), (With<Block>, Changed<Collider>)>,
     mut collider_text_query: Query<&mut Text>,
-) {
-    for (ball_entity, ball_transform, ball_sprite, mut movement) in ball_query.iter_mut() {
-        // checking borders and flip if on wall or despawn on ground
-        if ball_transform.translation.y < -CONFIG.window_height / 2.{
-            commands.entity(ball_entity).despawn();
-            continue;
-        }
-        if ball_transform.translation.y > CONFIG.window_height / 2. && movement.y() > 0. {
-            movement.flip_y();
-        }
-        if ball_transform.translation.x < -CONFIG.window_width / 2. && movement.x() < 0. {
-            movement.flip_x();
-        }
-        if ball_transform.translation.x > CONFIG.window_width / 2. && movement.x() > 0. {
-            movement.flip_x();
-        }
+    mut ball_destroy_ev: EventWriter<BallDestroyEvent>,
 
-        for (collider_entity, mut collider, transform, sprite, children) in
-            collider_query.iter_mut()
-        {
-            let collision = collide(
-                ball_transform.translation,
-                ball_sprite.size,
-                transform.translation,
-                sprite.size,
-            );
-            if let Some(collision) = collision {
-                // block health gets checked
-                if let Collider::Block(health) = *collider {
-                    if health > 1 {
-                        *collider = Collider::Block(health - 1);
-                        if let Some(children) = children {
-                            if let Ok(mut child) = collider_text_query.get_mut(children[0]) {
-                                child.sections[0].value =
-                                    (child.sections[0].value.parse::<u32>().unwrap() - 1)
-                                        .to_string();
-                            }
-                        }
-                    } else {
-                        scoreboard.score += 1;
-                        commands.entity(collider_entity).despawn_recursive();
-                    }
-                    // reflect the ball when it collides
-                    let mut reflect_x = false;
-                    let mut reflect_y = false;
-
-                    // only reflect if the ball's velocity is going in the opposite direction of the
-                    // collision
-                    match collision {
-                        Collision::Left => reflect_x = true,
-                        Collision::Right => reflect_x = true,
-                        Collision::Top => reflect_y = true ,
-                        Collision::Bottom => reflect_y = true,
-                    }
-
-                    // reflect velocity on the x-axis if we hit something on the x-axis
-                    if reflect_x {
-                        movement.flip_x();
-                    }
-
-                    // reflect velocity on the y-axis if we hit something on the y-axis
-                    if reflect_y {
-                        movement.flip_y();
-                    }
+){
+    for (entity, children,collider) in block_query.iter_mut() {
+        if let Collider::Block(health) = collider {
+            if health >= &1 {
+                if let Ok(mut child) = collider_text_query.get_mut(children[0]) {
+                    child.sections[0].value = health.to_string();
                 }
+            } else {
+                commands.entity(entity).despawn_recursive();
+                ball_destroy_ev.send(BallDestroyEvent);
             }
         }
     }
 }
+pub fn ball_wall_collision_system(
+    mut commands: Commands,
+    mut ball_destroy_ev: EventWriter<BallDestroyEvent>,
+
+    mut ball_query: Query<(Entity, &Transform, &mut Velocity), With<Ball>>,
+) {
+    for (ball_entity, ball_transform, mut velocity) in ball_query.iter_mut() {
+        // checking borders and flip if on wall or despawn on ground
+        if ball_transform.translation.y < -CONFIG.window_height / 2.{
+            commands.entity(ball_entity).despawn();
+            ball_destroy_ev.send(BallDestroyEvent);
+            continue;
+        }
+        if ball_transform.translation.y > CONFIG.window_height / 2. {
+            velocity.linear *= Vec3::new(1.,-1.,1.); 
+        }
+        if ball_transform.translation.x < -CONFIG.window_width / 2. {
+            velocity.linear *= Vec3::new(-1.,1.,1.); 
+        }
+        if ball_transform.translation.x > CONFIG.window_width / 2. {
+            velocity.linear *= Vec3::new(-1.,1.,1.); 
+        }
+    }
+}
+pub struct BallDestroyEvent;
+
 pub fn check_balls_system(
     ball_query: Query<&Ball>,
     mut game_state: ResMut<State<GameState>>,
+    mut ball_destroy_ev: EventReader<BallDestroyEvent>,
     mut shooter_count: ResMut<Shooter>,
 ) {
-    if *game_state.current() == GameState::Shooting {
-        if ball_query.iter().len() == 0 {
-            shooter_count.finished = false;
-            shooter_count.shooted = 0;
-            let _ = game_state.set(GameState::MovingBlocks);
+    if ball_destroy_ev.iter().count() != 0 {
+        if *game_state.current() == GameState::Shooting {
+            if ball_query.iter().len() == 0 {
+                shooter_count.finished = false;
+                shooter_count.shooted = 0;
+                let _ = game_state.set(GameState::MovingBlocks);
+            }
         }
     }
+    
 }
 pub fn check_blocks_system(
     block_query: Query<&Block>,

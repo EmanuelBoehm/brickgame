@@ -13,7 +13,7 @@ pub struct Shooter {
 impl Default for Shooter {
     fn default() -> Self {
         Shooter {
-            count: 40,
+            count: 20,
             shooted: 0,
             finished: false,
         }

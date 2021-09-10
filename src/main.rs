@@ -12,9 +12,8 @@ mod components;
 use constants::CONFIG;
 use heron::PhysicsPlugin;
 use resource::{HasWon, MousePos, Shooter};
-use system::{ball_collision_system, ball_movement_system, button_system, check_balls_system, check_blocks_system, despawn_balls_system, despawn_blocks_system, despawn_button_system, mouse_listener_system, move_blocks_system};
+use system::{BallDestroyEvent, ball_wall_collision_system, button_system, check_balls_system, check_blocks_system, collision_events, despawn_balls_system, despawn_blocks_system, despawn_button_system, mouse_listener_system, move_blocks_system, update_block_text};
 mod system;
-use heron::prelude::*;
 
 #[macro_use]
 extern crate lazy_static;
@@ -31,13 +30,15 @@ fn main() {
         .add_plugin(PhysicsPlugin::default()) // Add the plugin
 
         .add_plugins(DefaultPlugins)
-
+        .add_event::<BallDestroyEvent>()
         .insert_resource(HasWon::default())
         .insert_resource(Scoreboard { score: 0 })
         .insert_resource(ClearColor(Color::rgb(0.9, 0.9, 0.9)))
         .insert_resource(Shooter::default())
         .insert_resource(MousePos::ZERO)
-        
+        .add_system(collision_events.system())
+        .add_system(update_block_text.system())
+
         // startup
         .add_startup_system(camera_init_system.system())
         //.add_startup_system(physic_init_system.system())
@@ -59,10 +60,7 @@ fn main() {
                 .with_system(block_setup.system())
         )
         // Gamestate Shooting
-        .add_system_set(
-            SystemSet::on_enter(GameState::Shooting)
-                .with_system(ball_setup.system())
-        )
+        
         .add_system_set(
             SystemSet::on_update(GameState::Shooting)
                 .with_run_criteria(FixedTimestep::step(0.1))
@@ -72,8 +70,7 @@ fn main() {
             SystemSet::on_update(GameState::Shooting)
                 .with_system(check_balls_system.system())
                 .with_system(check_blocks_system.system())
-                .with_system(ball_movement_system.system().label("movement").before("collision"))
-                .with_system(ball_collision_system.system().label("collision").after("movement")),
+                .with_system(ball_wall_collision_system.system()),
         )
         .add_system_set(
             SystemSet::on_exit(GameState::Shooting)

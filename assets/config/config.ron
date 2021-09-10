@@ -1,7 +1,7 @@
 (
     block_size: 60,
-    ball_size: 12,
+    ball_size: 20,
     window_width: 900,
     window_height: 900,
-    ballspeed: 15,
+    ballspeed: 1.5,
 )
