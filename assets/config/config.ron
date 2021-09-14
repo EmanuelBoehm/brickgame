@@ -3,5 +3,5 @@
     ball_size: 15,
     window_width: 900,
     window_height: 900,
-    ballspeed: 1.8,
+    ballspeed: 2.,
 )

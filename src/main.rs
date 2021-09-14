@@ -4,14 +4,16 @@ mod constants;
 mod entity;
 mod builder;
 mod resource;
-use builder::{construct_ball, construct_block};
-use brickgame_mapgen::voronoi;
+use builder::{construct_ball, construct_block_standard};
+use brickgame_mapgen::{map::BrickType, voronoi};
 use entity::*;
 mod components;
 use constants::CONFIG;
 use heron::PhysicsPlugin;
 use resource::{HasWon, MousePos, Shooter};
-use system::{BallDestroyEvent, ball_wall_collision_system, button_system, check_balls_system, check_blocks_system, collision_events, despawn_balls_system, despawn_blocks_system, despawn_button_system, mouse_listener_system, move_blocks_system, update_block_text};
+use system::{GameEvents, ball_wall_collision_system, button_system, check_blocks_system, collision_events, despawn_balls_system, despawn_blocks_system, despawn_button_system, mouse_listener_system, move_blocks_system, read_game_events, update_block_text};
+
+use crate::builder::construct_block_add_ball;
 mod system;
 
 #[macro_use]
@@ -29,7 +31,7 @@ fn main() {
         .add_plugin(PhysicsPlugin::default()) // Add the plugin
 
         .add_plugins(DefaultPlugins)
-        .add_event::<BallDestroyEvent>()
+        .add_event::<GameEvents>()
         .insert_resource(HasWon::default())
         .insert_resource(Scoreboard { score: 0 })
         .insert_resource(ClearColor(Color::rgb(0.9, 0.9, 0.9)))
@@ -67,7 +69,7 @@ fn main() {
         )
         .add_system_set(
             SystemSet::on_update(GameState::Shooting)
-                .with_system(check_balls_system.system())
+                .with_system(read_game_events.system())
                 .with_system(check_blocks_system.system())
                 .with_system(ball_wall_collision_system.system()),
         )
@@ -102,13 +104,22 @@ fn block_setup(
             CONFIG.window_height as usize / CONFIG.block_size as usize)
         );
     for brick in &map.bricks {
-        construct_block(
-            &mut commands,
-            &mut materials,
-            &asset_server,
-            brick.position,
-            brick.health,
-        );
+        match brick.brick_type {
+            BrickType::Standard(health) => {
+                construct_block_standard(
+                    &mut commands,
+                    &mut materials,
+                    &asset_server,
+                    brick.position,
+                    health,
+                );
+            },
+            BrickType::AddBall => {
+                construct_block_add_ball(&mut commands, &mut materials, &asset_server,brick.position)
+            },
+            BrickType::None => {},
+        }
+        
     }
 
 }
@@ -119,10 +130,12 @@ fn ball_setup(
     mut shooter_count: ResMut<Shooter>,
     mouse_pos: Res<MousePos>,
     game_state: Res<State<GameState>>,
+    mut asset_server: ResMut<AssetServer>,
+
 ) {
     if *game_state.current() == GameState::Shooting {
         if !shooter_count.finished {
-            construct_ball(&mut commands, &mut materials, mouse_pos);
+            construct_ball(&mut commands, &mut materials, &mut asset_server, mouse_pos);
             shooter_count.shooted += 1;
             if shooter_count.shooted == shooter_count.count {
                 shooter_count.shooted = 0;
@@ -137,10 +150,7 @@ fn camera_init_system(mut commands: Commands) {
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
     commands.spawn_bundle(UiCameraBundle::default());
 }
-pub enum Collider {
-    Block(u32),
-    Wall,
-}
+
 
 fn direction_ball_to_mouse(mouse_pos: Vec2) -> Vec2 {
     let mut position = mouse_pos.clone();

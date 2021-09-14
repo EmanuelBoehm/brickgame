@@ -2,13 +2,15 @@
 use bevy::prelude::*;
 use heron::{CollisionEvent, Velocity};
 
-use crate::{Collider, GameState, MousePos, Shooter, components::CollisionLayer, constants::CONFIG, entity::{Ball, Block}, resource::HasWon};
+use crate::{GameState, MousePos, Shooter, components::CollisionLayer, constants::CONFIG, entity::{Ball, Block}, resource::HasWon};
 
 pub fn collision_events(
-    mut events: EventReader<CollisionEvent>,
-    mut block_query: Query<(Entity, &mut Collider), With<Block>>,
+    mut commands: Commands,
+    mut collision_events: EventReader<CollisionEvent>,
+    mut game_events: EventWriter<GameEvents>,
+    mut block_query: Query<(Entity, &mut Block)>,
 ) {
-    events
+    collision_events
     .iter()
     // We care about when the entities "stopp" to collide
     .filter(|e| e.is_stopped())
@@ -17,84 +19,105 @@ pub fn collision_events(
         
         let (layers_1, layers_2) = event.collision_layers();
 
-        if layers_1.contains_group(CollisionLayer::Block) {
-            Some(entity_1) 
-        } else if layers_2.contains_group(CollisionLayer::Block) {
+        if !layers_1.contains_group(CollisionLayer::Ball) {
+            Some(entity_1)
+        } else if !layers_2.contains_group(CollisionLayer::Ball) {
             Some(entity_2)
         } else {
             None
         }
     })
     .for_each(|block_entity| {
-        let mut collider = block_query.get_mut(block_entity).unwrap().1;
-        if let Collider::Block(health) = *collider {
-            if health > 0 {
-                *collider = Collider::Block(health - 1);
+        let may_block = block_query.get_mut(block_entity);
+        if let Ok(mut block) = may_block {
+            match *block.1 {
+                Block::Standard(health) => {
+                    if health > 0 {
+                        *block.1 = Block::Standard(health - 1);
+                    }
+                },
+                Block::AddBall => {
+                    game_events.send(GameEvents::AddBall);
+                    commands.entity(block_entity).despawn_recursive();
+                },
             }
         }
+        
     });
+}
+pub fn read_game_events(
+    mut game_events: EventReader<GameEvents>,
+    mut shooter_count: ResMut<Shooter>,
+    ball_query: Query<&Ball>,
+    mut game_state: ResMut<State<GameState>>,
+    
+
+){
+    for game_event in game_events.iter() {
+        match *game_event {
+            GameEvents::AddBall => {
+                shooter_count.count += 1;
+
+            },
+            GameEvents::DestroyBall => {
+                if *game_state.current() == GameState::Shooting {
+                    if ball_query.iter().len() <= 1 {
+                        shooter_count.finished = false;
+                        shooter_count.shooted = 0;
+                        let _ = game_state.set(GameState::MovingBlocks);
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub fn update_block_text(
     mut commands: Commands,
-    block_query: Query<(Entity, &Children, &Collider), (With<Block>, Changed<Collider>)>,
+    block_query: Query<(Entity, &Children, &Block), Changed<Block>>,
     mut collider_text_query: Query<&mut Text>,
-    mut ball_destroy_ev: EventWriter<BallDestroyEvent>,
 
 ){
-    for (entity, children,collider) in block_query.iter() {
-        if let Collider::Block(health) = collider {
-            if health >= &1 {
+    for (entity, children,block) in block_query.iter() {
+        if let &Block::Standard(health) = block {
+            if health >= 1 {
                 if let Ok(mut child) = collider_text_query.get_mut(children[0]) {
                     child.sections[0].value = health.to_string();
                 }
             } else {
                 commands.entity(entity).despawn_recursive();
-                ball_destroy_ev.send(BallDestroyEvent);
             }
         }
     }
 }
 pub fn ball_wall_collision_system(
     mut commands: Commands,
-    mut ball_destroy_ev: EventWriter<BallDestroyEvent>,
+    mut game_events: EventWriter<GameEvents>,
     mut ball_query: Query<(Entity, &Transform, &mut Velocity), With<Ball>>,
 ) {
     for (ball_entity, ball_transform, mut velocity) in ball_query.iter_mut() {
         // checking borders and flip if on wall or despawn on ground
         if ball_transform.translation.y < -CONFIG.window_height / 2.{
+
+            game_events.send(GameEvents::DestroyBall);
             commands.entity(ball_entity).despawn();
-            ball_destroy_ev.send(BallDestroyEvent);
             continue;
         }
-        if ball_transform.translation.y > CONFIG.window_height / 2. {
+        if ball_transform.translation.y > CONFIG.window_height / 2. && velocity.linear.y > 0. {
             velocity.linear *= Vec3::new(1.,-1.,1.); 
         }
-        if ball_transform.translation.x < -CONFIG.window_width / 2. {
+        if ball_transform.translation.x < -CONFIG.window_width / 2. && velocity.linear.x < 0. {
             velocity.linear *= Vec3::new(-1.,1.,1.); 
         }
-        if ball_transform.translation.x > CONFIG.window_width / 2. {
+        if ball_transform.translation.x > CONFIG.window_width / 2. && velocity.linear.x > 0. {
             velocity.linear *= Vec3::new(-1.,1.,1.); 
         }
     }
 }
-pub struct BallDestroyEvent;
-
-pub fn check_balls_system(
-    ball_query: Query<&Ball>,
-    mut game_state: ResMut<State<GameState>>,
-    mut ball_destroy_ev: EventReader<BallDestroyEvent>,
-    mut shooter_count: ResMut<Shooter>,
-) {
-    if ball_destroy_ev.iter().count() != 0 {
-        if *game_state.current() == GameState::Shooting {
-            if ball_query.iter().len() <= 1 {
-                shooter_count.finished = false;
-                shooter_count.shooted = 0;
-                let _ = game_state.set(GameState::MovingBlocks);
-            }
-        }
-    }
+#[derive(Debug,PartialEq)]
+pub enum GameEvents {
+    DestroyBall,
+    AddBall,
 }
 
 pub fn check_blocks_system(
@@ -105,7 +128,6 @@ pub fn check_blocks_system(
     if *game_state.current() == GameState::Shooting {
         if block_query.iter().len() == 0 {
             *has_won = Some(true);
-            println!("has won");
             let _ = game_state.set(GameState::Init);
         }
     }
@@ -169,7 +191,6 @@ pub fn button_system(
     >,
     mut has_won: ResMut<HasWon>,
     mut game_state: ResMut<State<GameState>>,
-
 ) {
     for interaction in interaction_query.iter() {
         
