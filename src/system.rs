@@ -10,8 +10,8 @@ pub fn collision_events(
 ) {
     events
     .iter()
-    // We care about when the entities "start" to collide
-    .filter(|e| e.is_started())
+    // We care about when the entities "stopp" to collide
+    .filter(|e| e.is_stopped())
     .filter_map(|event| {
         let (entity_1, entity_2) = event.rigid_body_entities();
         
@@ -22,7 +22,6 @@ pub fn collision_events(
         } else if layers_2.contains_group(CollisionLayer::Block) {
             Some(entity_2)
         } else {
-            // This event is not the collision between an enemy and the player. We can ignore it.
             None
         }
     })
@@ -38,12 +37,12 @@ pub fn collision_events(
 
 pub fn update_block_text(
     mut commands: Commands,
-    mut block_query: Query<(Entity, &Children, &Collider), (With<Block>, Changed<Collider>)>,
+    block_query: Query<(Entity, &Children, &Collider), (With<Block>, Changed<Collider>)>,
     mut collider_text_query: Query<&mut Text>,
     mut ball_destroy_ev: EventWriter<BallDestroyEvent>,
 
 ){
-    for (entity, children,collider) in block_query.iter_mut() {
+    for (entity, children,collider) in block_query.iter() {
         if let Collider::Block(health) = collider {
             if health >= &1 {
                 if let Ok(mut child) = collider_text_query.get_mut(children[0]) {
@@ -59,7 +58,6 @@ pub fn update_block_text(
 pub fn ball_wall_collision_system(
     mut commands: Commands,
     mut ball_destroy_ev: EventWriter<BallDestroyEvent>,
-
     mut ball_query: Query<(Entity, &Transform, &mut Velocity), With<Ball>>,
 ) {
     for (ball_entity, ball_transform, mut velocity) in ball_query.iter_mut() {
@@ -90,15 +88,15 @@ pub fn check_balls_system(
 ) {
     if ball_destroy_ev.iter().count() != 0 {
         if *game_state.current() == GameState::Shooting {
-            if ball_query.iter().len() == 0 {
+            if ball_query.iter().len() <= 1 {
                 shooter_count.finished = false;
                 shooter_count.shooted = 0;
                 let _ = game_state.set(GameState::MovingBlocks);
             }
         }
     }
-    
 }
+
 pub fn check_blocks_system(
     block_query: Query<&Block>,
     mut game_state: ResMut<State<GameState>>,
@@ -165,7 +163,7 @@ pub fn mouse_listener_system(
 }
 
 pub fn button_system(
-    mut interaction_query: Query<
+    interaction_query: Query<
         &Interaction,
         (Changed<Interaction>, With<Button>),
     >,
@@ -173,44 +171,39 @@ pub fn button_system(
     mut game_state: ResMut<State<GameState>>,
 
 ) {
-    for interaction in interaction_query.iter_mut() {
-        match *interaction {
-            Interaction::Clicked => {
-                let _ = game_state.set(GameState::MovingBlocks);
-                *has_won = None;
+    for interaction in interaction_query.iter() {
+        
+        if *interaction == Interaction::Clicked {
 
-            }
-            Interaction::Hovered => {
-            }
-            Interaction::None => {
-            }
+            let _ = game_state.set(GameState::MovingBlocks);
+            *has_won = None;
         }
     }
 }
 pub fn despawn_button_system(
     mut commands: Commands,
-    mut button_query: Query<Entity, With<Button>>,
+    button_query: Query<Entity, With<Button>>,
 ) {
     button_query
-    .iter_mut()
+    .iter()
     .for_each(|e| commands.entity(e).despawn_recursive());
 }
 
 pub fn despawn_blocks_system(
     mut commands: Commands,
-    mut block_query: Query<Entity, With<Block>>,
+    block_query: Query<Entity, With<Block>>,
 ) {
     block_query
-    .iter_mut()
+    .iter()
     .for_each(|e| commands.entity(e).despawn_recursive());
 }
 pub fn despawn_balls_system(
     mut commands: Commands,
-    mut ball_query: Query<Entity, With<Ball>>,
+    ball_query: Query<Entity, With<Ball>>,
     mut shooter: ResMut<Shooter>,
 ) {
     shooter.reset();
     ball_query
-    .iter_mut()
+    .iter()
     .for_each(|e| commands.entity(e).despawn_recursive());
 }

@@ -4,7 +4,6 @@ mod constants;
 mod entity;
 mod builder;
 mod resource;
-mod physic;
 use builder::{construct_ball, construct_block};
 use brickgame_mapgen::voronoi;
 use entity::*;
@@ -92,6 +91,7 @@ pub enum GameState {
     MovingBlocks,
 }
 
+
 fn block_setup(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -137,15 +137,6 @@ fn camera_init_system(mut commands: Commands) {
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
     commands.spawn_bundle(UiCameraBundle::default());
 }
-// fn physic_init_system(
-//     mut configuration: ResMut<RapierConfiguration>,
-
-// ) {
-//     configuration.gravity = Vector::y() * 0.0;
-//     configuration.timestep_mode = TimestepMode::FixedTimestep;
-
-
-// }
 pub enum Collider {
     Block(u32),
     Wall,
